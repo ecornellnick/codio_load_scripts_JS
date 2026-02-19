@@ -1,69 +1,129 @@
 (function (window, document) {
+
+  /**
+   * Wait until jQuery and Bootstrap plugins are fully registered.
+   * Bootstrap attaches plugins to $.fn (tooltip, popover, tab).
+   */
   function waitForBootstrap(cb) {
     const ok =
       window.jQuery &&
       window.jQuery.fn &&
       typeof window.jQuery.fn.tooltip === "function" &&
-      typeof window.jQuery.fn.popover === "function" &&
-      typeof window.jQuery.fn.tab === "function";
+      typeof window.jQuery.fn.popover === "function";
 
     if (!ok) return setTimeout(() => waitForBootstrap(cb), 50);
     cb(window.jQuery);
   }
 
+  /**
+   * Initialize Bootstrap interactive components safely.
+   * Only initializes elements that haven't already been initialized.
+   */
   function initAll($, root) {
     const $root = root ? $(root) : $(document);
 
-    // Tooltips (only if not already initialized)
+    // ---- Tooltips ----
     $root.find('[data-toggle="tooltip"]').each(function () {
       if (!$(this).data('bs.tooltip')) {
         $(this).tooltip({ container: 'body' });
       }
     });
 
-    // Popovers
+    // ---- Popovers ----
     $root.find('[data-toggle="popover"]').each(function () {
       if (!$(this).data('bs.popover')) {
         $(this).popover({ container: 'body' });
       }
     });
-
-    // Tabs/Pills (do NOT call .tab() repeatedly)
-    // Bootstrap wires click handlers via delegated events; we only need to
-    // prevent Codio hash interference (handled below) and optionally call tab() once.
-    $root.find('[data-toggle="tab"], [data-toggle="pill"]').each(function () {
-      if (!$(this).data('bs.tab')) {
-        $(this).tab();
-      }
-    });
   }
 
-  waitForBootstrap(($) => {
-    // 1) One-time init
-    initAll($);
+  
+  // Manual tab handler.
 
-    // 2) Prevent Codio/hash navigation from hijacking tab clicks.
-    // Use this ONLY for tab/pill links that point to a hash.
-    $(document).on('click', 'a[data-toggle="tab"][href^="#"], a[data-toggle="pill"][href^="#"]', function (e) {
+  function enableManualTabs() {
+    document.addEventListener('click', function (e) {
+
+      const link = e.target.closest('a[data-toggle="tab"], a[data-toggle="pill"]');
+      if (!link) return;
+
+      const targetSelector = link.getAttribute('href');
+      if (!targetSelector || !targetSelector.startsWith('#')) return;
+
+      // Stop Codio or other handlers from hijacking the click
       e.preventDefault();
       e.stopPropagation();
-      $(this).tab('show');
-    });
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
 
-    // 3) Safe, debounced re-init for when Codio swaps guide content.
-    // Ignore mutations caused by Bootstrap itself (tooltips/popovers inject DOM).
+      // Activate clicked tab
+      const nav = link.closest('.nav');
+      if (nav) {
+        nav.querySelectorAll('.nav-link').forEach(tab => {
+          tab.classList.remove('active');
+          tab.setAttribute('aria-selected', 'false');
+        });
+      }
+
+      link.classList.add('active');
+      link.setAttribute('aria-selected', 'true');
+
+      // Find tab content container
+      let tabContent = null;
+
+      if (nav && nav.parentElement) {
+        tabContent = nav.parentElement.querySelector('.tab-content');
+      }
+
+      if (!tabContent) {
+        tabContent = document.querySelector('.tab-content');
+      }
+
+      if (!tabContent) return;
+
+      // Hide all panes
+      tabContent.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.remove('show', 'active');
+      });
+
+      // Show selected pane
+      const targetPane = document.querySelector(targetSelector);
+      if (targetPane) {
+        targetPane.classList.add('active', 'show');
+      }
+
+    }, true); // <-- capture phase is critical
+  }
+
+  // ---- Bootstrap Ready ----
+  waitForBootstrap(($) => {
+
+    // Initial component initialization
+    initAll($);
+
+    // Enable manual tab behavior
+    enableManualTabs();
+
+    /**
+     * Observe DOM mutations.
+     *
+     * Codio Guides sometimes swap content without reloading the page.
+     * We re-run initialization when new content appears.
+     *
+     * We ignore tooltip/popover injected nodes to avoid infinite loops.
+     */
     let timer = null;
 
-    const obs = new MutationObserver((mutations) => {
-      // If mutation is from bootstrap tooltip/popover DOM, ignore it
-      for (const m of mutations) {
-        for (const n of m.addedNodes) {
-          if (n.nodeType === 1) {
-            const el = /** @type {HTMLElement} */ (n);
-            if (el.classList &&
-               (el.classList.contains('tooltip') ||
-                el.classList.contains('popover'))) {
-              return; // ignore bootstrap overlay injection
+    const observer = new MutationObserver((mutations) => {
+
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === 1) {
+            const el = node;
+            if (
+              el.classList &&
+              (el.classList.contains('tooltip') ||
+               el.classList.contains('popover'))
+            ) {
+              return; // Ignore Bootstrap overlay injections
             }
           }
         }
@@ -71,9 +131,11 @@
 
       clearTimeout(timer);
       timer = setTimeout(() => initAll($), 150);
+
     });
 
-    obs.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true });
+
   });
 
 })(window, document);
