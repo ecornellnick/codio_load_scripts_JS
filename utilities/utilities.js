@@ -2,7 +2,6 @@
 
   /**
    * Wait until jQuery + Bootstrap tooltip/popover plugins are loaded.
-   * Bootstrap attaches plugins to $.fn.
    */
   function waitForBootstrap(cb) {
     const ok =
@@ -21,11 +20,9 @@
     // TOOLTIP + POPOVER INITIALIZATION
     // ------------------------------------
 
-    // Initial pass (if content already exists)
     $('[data-toggle="tooltip"]').tooltip({ container: 'body' });
     $('[data-toggle="popover"]').popover({ container: 'body' });
 
-    // Delegated init (Codio may swap DOM dynamically)
     $(document).on('mouseenter focus', '[data-toggle="tooltip"]', function () {
       const $el = $(this);
       if (!$el.data('bs.tooltip')) {
@@ -43,23 +40,33 @@
     });
 
     // ------------------------------------
-    // TOAST AUTO-SHOW SUPPORT
+    // TOAST AUTO-SHOW SUPPORT (TIMING SAFE)
     // ------------------------------------
-    // Only show toasts explicitly marked with class="show-on-load"
-    // Prevents accidental popups across other guides.
 
-    $('.toast.show-on-load').each(function () {
-      const $t = $(this);
+    function showToasts() {
+      if (typeof $.fn.toast !== "function") return;
 
-      if (!$t.data('bs.toast')) {
-        $t.toast({
-          autohide: true,   // change to false if you want manual close only
-          delay: 6000       // 6 seconds display
-        });
-      }
+      $('.toast.show-on-load').each(function () {
+        const $t = $(this);
 
-      $t.toast('show');
-    });
+        if (!$t.data('bs.toast')) {
+          $t.toast({
+            autohide: true,
+            delay: 6000
+          });
+        }
+
+        $t.toast('show');
+      });
+    }
+
+    // Run immediately
+    showToasts();
+
+    // Retry briefly in case Codio renders content late
+    setTimeout(showToasts, 200);
+    setTimeout(showToasts, 800);
+    setTimeout(showToasts, 2000);
 
   });
 
