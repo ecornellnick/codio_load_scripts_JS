@@ -1,8 +1,5 @@
 (function (window, document) {
 
-  /**
-   * Wait until jQuery + Bootstrap tooltip/popover plugins are loaded.
-   */
   function waitForBootstrap(cb) {
     const ok =
       window.jQuery &&
@@ -40,30 +37,30 @@
     });
 
     // ------------------------------------
-    // TOAST AUTO-SHOW SUPPORT (TIMING SAFE)
+    // TOAST AUTO-SHOW SUPPORT (CODIO SAFE)
     // ------------------------------------
 
     function showToasts() {
       if (typeof $.fn.toast !== "function") return;
 
-      $('.toast.show-on-load').each(function () {
+      const $toasts = $('.toast.show-on-load');
+      if ($toasts.length === 0) return;
+
+      $toasts.each(function () {
         const $t = $(this);
 
         if (!$t.data('bs.toast')) {
-          $t.toast({
-            autohide: true,
-            delay: 6000
-          });
+          $t.toast({ autohide: true, delay: 6000 });
         }
 
+        // Ask Bootstrap to show, then force visibility (Codio sometimes blocks transitions)
         $t.toast('show');
+        $t.addClass('show');
+        $t.css({ display: 'block', opacity: 1, visibility: 'visible' });
       });
     }
 
-    // Run immediately
     showToasts();
-
-    // Retry briefly in case Codio renders content late
     setTimeout(showToasts, 200);
     setTimeout(showToasts, 800);
     setTimeout(showToasts, 2000);
