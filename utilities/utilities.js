@@ -1,84 +1,104 @@
 (function (window, document) {
 
-  // Try to find jQuery in this context OR in the first iframe (Codio preview often lives there)
-  function getJQuery() {
-    // Current context
-    if (window.jQuery && window.jQuery.fn) return window.jQuery;
-    if (window.$ && window.$.fn) return window.$;
+  // Return a list of contexts (window + accessible iframe windows)
+  function getContexts() {
+    const ctxs = [{ win: window, doc: document }];
 
-    // Try any iframe (Codio often renders Guide preview in an iframe)
     const iframes = document.querySelectorAll('iframe');
     for (const frame of iframes) {
       try {
         const w = frame.contentWindow;
-        if (w && w.jQuery && w.jQuery.fn) return w.jQuery;
-        if (w && w.$ && w.$.fn) return w.$;
+        const d = frame.contentDocument || (w && w.document);
+        if (w && d) ctxs.push({ win: w, doc: d });
       } catch (e) {
-        // Cross-origin iframe; ignore
+        // cross-origin iframe; ignore
       }
     }
-    return null;
+    return ctxs;
   }
 
-  function waitForBootstrap(cb) {
-    const jq = getJQuery();
-    const ok =
+  function bootstrapReady(jq) {
+    return !!(
       jq &&
       jq.fn &&
       typeof jq.fn.tooltip === "function" &&
-      typeof jq.fn.popover === "function";
-
-    if (!ok) return setTimeout(() => waitForBootstrap(cb), 100);
-    cb(jq);
+      typeof jq.fn.popover === "function" &&
+      typeof jq.fn.toast === "function"
+    );
   }
 
-  waitForBootstrap((jQuery) => {
+  function initInContext(ctx) {
+    const jq = ctx.win.jQuery || ctx.win.$;
+    if (!bootstrapReady(jq)) return false;
 
-    // ---------------------------
-    // Tooltips + Popovers
-    // ---------------------------
-    jQuery('[data-toggle="tooltip"]').tooltip({ container: 'body' });
-    jQuery('[data-toggle="popover"]').popover({ container: 'body' });
+    const $ = jq;
+    const doc = ctx.doc;
 
-    jQuery(document).on('mouseenter focus', '[data-toggle="tooltip"]', function () {
-      const $el = jQuery(this);
-      if (!$el.data('bs.tooltip')) $el.tooltip({ container: 'body' });
-      $el.tooltip('show');
+    // Tooltips & Popovers
+    $('[data-toggle="tooltip"]', doc).tooltip({ container: 'body' });
+    $('[data-toggle="popover"]', doc).popover({ container: 'body' });
+
+    // Delegated tooltip/popover init inside THIS document
+    $(doc).off('mouseenter.bootstrapHints focus.bootstrapHints')
+          .on('mouseenter.bootstrapHints focus.bootstrapHints', '[data-toggle="tooltip"]', function () {
+            const $el = $(this);
+            if (!$el.data('bs.tooltip')) $el.tooltip({ container: 'body' });
+            $el.tooltip('show');
+          });
+
+    $(doc).off('click.bootstrapHints')
+          .on('click.bootstrapHints', '[data-toggle="popover"]', function () {
+            const $el = $(this);
+            if (!$el.data('bs.popover')) $el.popover({ container: 'body' });
+            $el.popover('toggle');
+          });
+
+    // Toasts (auto-show callouts) inside THIS document
+    $('.toast.show-on-load', doc).each(function () {
+      const $t = $(this);
+
+      if (!$t.data('bs.toast')) {
+        $t.toast({ autohide: true, delay: 6000 });
+      }
+
+      $t.toast('show');
+
+      // Force visibility in case transitions get weird in embedded contexts
+      $t.addClass('show');
+      $t.css({ display: 'block', opacity: 1, visibility: 'visible' });
     });
 
-    jQuery(document).on('click', '[data-toggle="popover"]', function () {
-      const $el = jQuery(this);
-      if (!$el.data('bs.popover')) $el.popover({ container: 'body' });
-      $el.popover('toggle');
-    });
+    return true;
+  }
 
-    // ---------------------------
-    // Toasts (auto-show)
-    // ---------------------------
-    function showToasts() {
-      if (typeof jQuery.fn.toast !== "function") return;
+  function runAll() {
+    const ctxs = getContexts();
+    let any = false;
 
-      const $toasts = jQuery('.toast.show-on-load');
-      if ($toasts.length === 0) return;
-
-      $toasts.each(function () {
-        const $t = jQuery(this);
-
-        if (!$t.data('bs.toast')) {
-          $t.toast({ autohide: true, delay: 6000 });
-        }
-
-        $t.toast('show');
-        $t.addClass('show');
-        $t.css({ display: 'block', opacity: 1, visibility: 'visible' });
-      });
+    for (const ctx of ctxs) {
+      try {
+        const did = initInContext(ctx);
+        if (did) any = true;
+      } catch (e) {
+        // ignore context errors
+      }
     }
 
-    showToasts();
-    setTimeout(showToasts, 200);
-    setTimeout(showToasts, 800);
-    setTimeout(showToasts, 2000);
+    return any;
+  }
 
-  });
+  // Retry for a bit because Codio can render late / swap preview frames
+  let attempts = 0;
+  const maxAttempts = 40;   // ~10s
+  const intervalMs = 250;
+
+  const timer = setInterval(() => {
+    attempts++;
+    const any = runAll();
+    if (any || attempts >= maxAttempts) clearInterval(timer);
+  }, intervalMs);
+
+  // Try immediately as well
+  runAll();
 
 })(window, document);
