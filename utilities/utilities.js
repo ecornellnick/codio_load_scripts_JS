@@ -1,46 +1,60 @@
 (function (window, document) {
 
+  // Try to find jQuery in this context OR in the first iframe (Codio preview often lives there)
+  function getJQuery() {
+    // Current context
+    if (window.jQuery && window.jQuery.fn) return window.jQuery;
+    if (window.$ && window.$.fn) return window.$;
+
+    // Try any iframe (Codio often renders Guide preview in an iframe)
+    const iframes = document.querySelectorAll('iframe');
+    for (const frame of iframes) {
+      try {
+        const w = frame.contentWindow;
+        if (w && w.jQuery && w.jQuery.fn) return w.jQuery;
+        if (w && w.$ && w.$.fn) return w.$;
+      } catch (e) {
+        // Cross-origin iframe; ignore
+      }
+    }
+    return null;
+  }
+
   function waitForBootstrap(cb) {
-    const jq = window.jQuery;
+    const jq = getJQuery();
     const ok =
       jq &&
       jq.fn &&
       typeof jq.fn.tooltip === "function" &&
       typeof jq.fn.popover === "function";
 
-    if (!ok) return setTimeout(() => waitForBootstrap(cb), 50);
+    if (!ok) return setTimeout(() => waitForBootstrap(cb), 100);
     cb(jq);
   }
 
   waitForBootstrap((jQuery) => {
 
-    // ------------------------------------
-    // TOOLTIP + POPOVER INITIALIZATION
-    // ------------------------------------
-
+    // ---------------------------
+    // Tooltips + Popovers
+    // ---------------------------
     jQuery('[data-toggle="tooltip"]').tooltip({ container: 'body' });
     jQuery('[data-toggle="popover"]').popover({ container: 'body' });
 
     jQuery(document).on('mouseenter focus', '[data-toggle="tooltip"]', function () {
       const $el = jQuery(this);
-      if (!$el.data('bs.tooltip')) {
-        $el.tooltip({ container: 'body' });
-      }
+      if (!$el.data('bs.tooltip')) $el.tooltip({ container: 'body' });
       $el.tooltip('show');
     });
 
     jQuery(document).on('click', '[data-toggle="popover"]', function () {
       const $el = jQuery(this);
-      if (!$el.data('bs.popover')) {
-        $el.popover({ container: 'body' });
-      }
+      if (!$el.data('bs.popover')) $el.popover({ container: 'body' });
       $el.popover('toggle');
     });
 
-    // ------------------------------------
-    // TOAST AUTO-SHOW SUPPORT (CODIO SAFE)
-    // ------------------------------------
-
+    // ---------------------------
+    // Toasts (auto-show)
+    // ---------------------------
     function showToasts() {
       if (typeof jQuery.fn.toast !== "function") return;
 
